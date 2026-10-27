@@ -390,15 +390,9 @@ def open_kakao():
 # OCR 실행 (pytesseract — 안드로이드/데스크톱)
 # ────────────────────────────────────────────────
 def run_ocr(image_path):
-    """이미지에서 텍스트 추출. 실패하거나 지원 안 되면 빈 문자열.
-
-    - 데스크톱(PC): Tesseract 설치돼 있으면 자동 인식.
-    - 안드로이드: Tesseract 엔진이 기본 포함되지 않으므로 건너뜀
-      (사진은 저장되고, 사용자가 보고 직접 입력).
+    """데스크톱(PC)용 OCR — Tesseract 사용.
+    안드로이드는 _do_ocr에서 ML Kit을 쓰므로 이 함수를 호출하지 않음.
     """
-    if platform == "android":
-        # 안드로이드는 OCR 건너뛰고 수동입력 유도 (앱 안정성 우선)
-        return ""
     try:
         import pytesseract
         from PIL import Image as PILImage
@@ -683,15 +677,31 @@ class CLBusinessCardApp(App):
         Clock.schedule_once(lambda dt: self._do_ocr(image_path), 0.3)
 
     def _do_ocr(self, image_path):
-        text = run_ocr(image_path)
-        if text.strip():
-            self.scan_result = parse_card_text(text)
-            toast("인식 완료! 확인 후 등록하세요")
+        if platform == "android":
+            # 안드로이드: ML Kit (비동기 콜백)
+            try:
+                from ocr_mlkit import mlkit_ocr
+                mlkit_ocr(image_path, self._on_ocr_text)
+                return
+            except Exception as e:
+                print("ML Kit 호출 실패, fallback:", e)
+                self._on_ocr_text("")
         else:
-            self.scan_result = {"name": "", "company": "", "department": "", "title": "",
-                                "phone": "", "email": "", "address": "", "memo": ""}
-            toast("자동 인식이 어려워요. 직접 입력해주세요")
-        self.refresh()
+            # 데스크톱: Tesseract (동기)
+            self._on_ocr_text(run_ocr(image_path))
+
+    def _on_ocr_text(self, text):
+        """OCR 결과(텍스트)를 받아 파싱 후 화면 갱신. ML Kit 콜백은 UI스레드가 아닐 수 있어 Clock 사용."""
+        def apply(dt=None):
+            if text and text.strip():
+                self.scan_result = parse_card_text(text)
+                toast("인식 완료! 확인 후 등록하세요")
+            else:
+                self.scan_result = {"name": "", "company": "", "department": "", "title": "",
+                                    "phone": "", "email": "", "address": "", "memo": ""}
+                toast("자동 인식이 어려워요. 직접 입력해주세요")
+            self.refresh()
+        Clock.schedule_once(apply, 0)
 
     def register_scanned(self):
         form = {k: ti.text.strip() for k, ti in self._scan_inputs.items()}

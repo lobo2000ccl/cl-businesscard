@@ -66,8 +66,11 @@ android.archs = arm64-v8a, armeabi-v7a
 p4a.branch = v2024.01.21
 p4a.fork = kivy
 
-# AndroidX 사용
+# AndroidX 사용 (ML Kit 필수)
 android.enable_androidx = True
+
+# ML Kit 한국어 텍스트 인식 (온디바이스 OCR, API 키 불필요)
+android.gradle_dependencies = com.google.mlkit:text-recognition-korean:16.0.1
 
 # 빌드 타입 (debug: 테스트용 서명, 바로 설치 가능)
 # release로 바꾸려면 서명 키 필요
