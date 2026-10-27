@@ -48,6 +48,26 @@ jobs:
           rm -rf ~/.buildozer .buildozer 2>/dev/null || true
           echo "깨끗한 상태에서 시작"
 
+      - name: buildozer용 Android SDK 준비 (sdkmanager 경로 수정)
+        run: |
+          set -e
+          SDK_ROOT=~/.buildozer/android/platform/android-sdk
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          cd /tmp
+          # 최신 cmdline-tools 다운로드
+          curl -sSL -o cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdtools.zip -d cmdtools_extract
+          mv cmdtools_extract/cmdline-tools "$SDK_ROOT/cmdline-tools/latest"
+          # buildozer가 찾는 구식 경로(tools/bin/sdkmanager)에 심볼릭 링크
+          mkdir -p "$SDK_ROOT/tools/bin"
+          ln -sf "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "$SDK_ROOT/tools/bin/sdkmanager"
+          ln -sf "$SDK_ROOT/cmdline-tools/latest/bin/avdmanager" "$SDK_ROOT/tools/bin/avdmanager"
+          echo "sdkmanager 위치:"
+          ls -la "$SDK_ROOT/tools/bin/" "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          # 라이선스 동의
+          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_ROOT" --licenses >/dev/null 2>&1 || true
+          echo "✅ SDK 준비 완료"
+
       - name: Android SDK 라이선스 사전 동의
         run: |
           # buildozer가 SDK 다운로드 시 라이선스 프롬프트에서 멈추지 않도록 미리 동의
