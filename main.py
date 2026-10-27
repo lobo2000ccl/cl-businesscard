@@ -623,9 +623,8 @@ class CLBusinessCardApp(App):
 
     def _android_pick_image(self, callback):
         try:
-            from plyer import filechooser
-            filechooser.open_file(on_selection=lambda sel: callback(sel[0]) if sel else None,
-                                  filters=["image/*"])
+            from android_picker import pick_image
+            pick_image(lambda path: callback(path) if path else toast("사진을 선택하지 않았어요"))
         except Exception as e:
             toast("갤러리 열기 실패: %s" % e)
 
@@ -655,11 +654,8 @@ class CLBusinessCardApp(App):
 
     def _android_camera(self):
         try:
-            from plyer import camera
-            path = os.path.join(os.path.dirname(get_data_path()),
-                                "scan_%d.jpg" % int(datetime.now().timestamp()))
-            camera.take_picture(filename=path,
-                                on_complete=lambda p: self.on_photo_captured(p))
+            from android_picker import take_photo
+            take_photo(lambda path: self.on_photo_captured(path) if path else toast("촬영이 취소됐어요"))
         except Exception as e:
             toast("카메라 실행 실패: %s" % e)
 
@@ -731,9 +727,8 @@ class CLBusinessCardApp(App):
     def pick_import_file(self):
         if platform == "android":
             try:
-                from plyer import filechooser
-                filechooser.open_file(
-                    on_selection=lambda sel: self._load_import(sel[0]) if sel else None)
+                from android_picker import pick_file
+                pick_file(lambda path: self._load_import(path) if path else toast("파일을 선택하지 않았어요"))
             except Exception as e:
                 toast("파일 열기 실패: %s" % e)
         else:
@@ -741,9 +736,11 @@ class CLBusinessCardApp(App):
 
     def _load_import(self, path):
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            # content Uri를 복사한 캐시파일은 확장자가 없을 수 있어 내용으로 판별
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 text = f.read()
-            if path.lower().endswith(".vcf"):
+            # 확장자 또는 내용으로 vCard/CSV 판별
+            if path.lower().endswith(".vcf") or "BEGIN:VCARD" in text.upper():
                 self.import_preview = parse_vcard(text)
             else:
                 self.import_preview = parse_csv(text)
