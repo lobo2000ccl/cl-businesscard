@@ -49,13 +49,24 @@ jobs:
           key: buildozer-v3-${{ hashFiles('buildozer.spec') }}
           restore-keys: buildozer-v3-
 
+      - name: Android SDK 라이선스 사전 동의
+        run: |
+          # buildozer가 SDK 다운로드 시 라이선스 프롬프트에서 멈추지 않도록 미리 동의
+          mkdir -p ~/.buildozer/android/platform/android-sdk/licenses || true
+          # 알려진 라이선스 해시들 기록 (sdkmanager --licenses 대체)
+          SDK_LIC=~/.buildozer/android/platform/android-sdk/licenses
+          mkdir -p "$SDK_LIC"
+          printf "\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n" > "$SDK_LIC/android-sdk-license"
+          printf "\n84831b9409646a918e30573bab4c9c91346d8abd\n504667f4c0de7af1a06de9f4b1727b84351f2910\n" > "$SDK_LIC/android-sdk-preview-license"
+          echo "라이선스 사전 동의 완료"
+
       - name: APK 빌드
         run: |
-          # yes의 SIGPIPE 종료가 스텝을 죽이지 않도록 pipefail 미사용
-          # 대신 buildozer 종료코드를 별도 파일로 저장
-          (buildozer -v android debug; echo "BUILDOZER_EXIT=$?" > build_exit.txt) 2>&1 | tee build.log || true
-          echo "=== buildozer 종료코드 ==="
-          cat build_exit.txt 2>/dev/null || echo "BUILDOZER_EXIT=unknown"
+          # yes로 모든 프롬프트 자동 동의. 파이프라인 끝단 tee가 성공하면 스텝 통과.
+          # (yes의 SIGPIPE는 set +o pipefail 상태에선 스텝을 죽이지 않음)
+          set +o pipefail
+          yes | buildozer -v android debug 2>&1 | tee build.log
+          echo "빌드 스텝 종료"
 
       - name: APK 수집 및 성공 판정
         id: check
