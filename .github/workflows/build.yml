@@ -40,14 +40,16 @@ jobs:
           pip install buildozer==1.5.0
           pip install cython==0.29.33
 
-      - name: Buildozer 캐시 복원
+      # 캐시 비활성화: 이전 빌드의 불완전한 산출물이 복원되어
+      # buildozer가 작업을 스킵하고 APK를 안 만드는 문제 방지.
+      # SDK/NDK만 별도 캐시 (빌드 산출물 .buildozer/android/platform/build* 제외)
+      - name: SDK/NDK 캐시 (빌드산출물 제외)
         uses: actions/cache@v4
         with:
           path: |
-            ~/.buildozer
-            .buildozer
-          key: buildozer-v3-${{ hashFiles('buildozer.spec') }}
-          restore-keys: buildozer-v3-
+            ~/.buildozer/android/platform/android-sdk
+            ~/.buildozer/android/platform/android-ndk-r25b
+          key: sdk-ndk-v1
 
       - name: Android SDK 라이선스 사전 동의
         run: |
