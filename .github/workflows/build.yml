@@ -79,6 +79,23 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
+      - name: APK를 Release로 발행 (폰에서 직접 다운로드)
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          APK=$(ls apk_out/*.apk 2>/dev/null | head -1)
+          if [ -n "$APK" ]; then
+            # 보기 좋은 이름으로 복사
+            cp "$APK" apk_out/CL-BusinessCard.apk
+            TAG="v1.0-build${{ github.run_number }}"
+            gh release create "$TAG" apk_out/CL-BusinessCard.apk \
+              --title "CL Business Card 명함집 APK" \
+              --notes "폰에서 아래 CL-BusinessCard.apk 를 눌러 다운로드 후 설치하세요." \
+              || gh release upload "$TAG" apk_out/CL-BusinessCard.apk --clobber
+            echo "✅ Release 발행 완료: $TAG"
+          fi
+
       - name: 빌드 로그를 Issue로 전송 (디버깅용)
         if: failure()
         env:
