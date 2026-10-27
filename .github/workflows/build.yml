@@ -46,21 +46,32 @@ jobs:
 
       - name: APK 빌드
         run: |
+          set -o pipefail
           yes | buildozer -v android debug 2>&1 | tee build.log
 
-      - name: APK 파일 찾기
-        id: findapk
+      - name: APK 파일 찾아서 모으기
         run: |
-          APK=$(find bin -name "*.apk" | head -1)
-          echo "apk_path=$APK" >> $GITHUB_OUTPUT
-          echo "빌드된 APK: $APK"
+          mkdir -p apk_out
+          echo "=== 전체 APK 검색 ==="
+          find / -name "*.apk" -not -path "*/.buildozer/android/platform/*" 2>/dev/null | tee apk_list.txt
+          # 찾은 APK 전부 apk_out으로 복사
+          while read -r f; do
+            [ -f "$f" ] && cp "$f" apk_out/ && echo "복사: $f"
+          done < apk_list.txt
+          echo "=== apk_out 내용 ==="
+          ls -lh apk_out/ || echo "APK 없음"
+          # 빌드 로그 마지막 50줄 출력 (실패 원인 확인용)
+          echo "=== build.log 마지막 60줄 ==="
+          tail -60 build.log 2>/dev/null || true
 
       - name: APK 업로드 (다운로드 가능)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: CL-BusinessCard-APK
-          path: bin/*.apk
+          path: apk_out/*.apk
           retention-days: 30
+          if-no-files-found: warn
 
       - name: 빌드 로그 업로드 (실패 시 디버깅용)
         if: always()
