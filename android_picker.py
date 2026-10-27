@@ -80,44 +80,86 @@ def _on_activity_result(request_code, result_code, intent):
         _deliver(None)
 
 
-def _copy_uri_to_cache(uri):
-    """content:// Uri를 앱 캐시의 실제 파일로 복사."""
+def _get_display_name(activity, uri):
+    """Uri에서 원본 파일명 가져오기 (확장자 보존용)."""
     try:
-        from jnius import autoclass, cast
+        from jnius import autoclass
+        OpenableColumns = autoclass("android.provider.OpenableColumns")
+        resolver = activity.getContentResolver()
+        cursor = resolver.query(uri, None, None, None, None)
+        if cursor is not None:
+            try:
+                idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if cursor.moveToFirst() and idx >= 0:
+                    name = cursor.getString(idx)
+                    cursor.close()
+                    return name
+            except Exception:
+                pass
+            try:
+                cursor.close()
+            except Exception:
+                pass
+    except Exception as e:
+        print("파일명 조회 실패:", e)
+    return None
+
+
+def _copy_uri_to_cache(uri):
+    """content:// Uri를 앱 캐시의 실제 파일로 복사 (확장자 보존)."""
+    try:
+        from jnius import autoclass
         PythonActivity = autoclass("org.kivy.android.PythonActivity")
         activity = PythonActivity.mActivity
         resolver = activity.getContentResolver()
-        stream = resolver.openInputStream(uri)
-        # 파일명 결정
+
+        # 원본 파일명에서 확장자 추출
+        display_name = _get_display_name(activity, uri)
+        ext = ""
+        if display_name and "." in display_name:
+            ext = "." + display_name.rsplit(".", 1)[-1].lower()
+        if not ext:
+            # MIME 타입으로 추측
+            mime = resolver.getType(uri) or ""
+            if "sheet" in mime or "excel" in mime:
+                ext = ".xlsx"
+            elif "image" in mime:
+                ext = ".jpg"
+            elif "csv" in mime:
+                ext = ".csv"
+            elif "vcard" in mime or "vcf" in mime:
+                ext = ".vcf"
+            else:
+                ext = ".bin"
+
         cache_dir = activity.getCacheDir().getAbsolutePath()
-        out_path = os.path.join(cache_dir, "picked_%d.jpg" % int(datetime.now().timestamp()))
-        # InputStream → 파일
-        BufferedInputStream = autoclass("java.io.BufferedInputStream")
+        out_path = os.path.join(cache_dir, "picked_%d%s" % (int(datetime.now().timestamp()), ext))
+
+        # InputStream → 파일 (Java 바이트 배열로 안정적 복사)
+        stream = resolver.openInputStream(uri)
         FileOutputStream = autoclass("java.io.FileOutputStream")
-        bis = BufferedInputStream(stream)
         fos = FileOutputStream(out_path)
-        buf = bytearray(8192)
-        JavaArray = autoclass  # noqa
-        # read loop via Java byte[]
-        from jnius import JavaClass, MetaJavaClass  # noqa
-        barr = _new_byte_array(8192)
+
+        # Java byte[] 생성 (jnius)
+        from jnius import JArray
+        import jnius
+        barr = JArray(jnius.jbyte)(8192)
         while True:
-            n = bis.read(barr, 0, 8192)
+            n = stream.read(barr, 0, 8192)
             if n == -1:
                 break
             fos.write(barr, 0, n)
         fos.flush()
         fos.close()
-        bis.close()
-        return out_path if os.path.exists(out_path) else None
+        stream.close()
+
+        if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
+            print("파일 복사 성공:", out_path, os.path.getsize(out_path), "bytes")
+            return out_path
+        return None
     except Exception as e:
         print("Uri 복사 실패:", e)
         return None
-
-
-def _new_byte_array(size):
-    """Java byte[] 생성."""
-    return bytearray(size)
 
 
 def _save_bitmap(bmp):

@@ -732,10 +732,34 @@ class CLBusinessCardApp(App):
         self._pick_image(lambda path: self.process_scan(path))
 
     def process_scan(self, image_path):
-        self.scan_photo = image_path
+        # 이미지 최적화 (너무 크면 OCR 느리고 메모리 문제)
+        opt_path = self._optimize_image(image_path)
+        self.scan_photo = opt_path
         toast("명함을 인식하는 중...")
-        # OCR은 시간이 걸리므로 다음 프레임에
-        Clock.schedule_once(lambda dt: self._do_ocr(image_path), 0.3)
+        Clock.schedule_once(lambda dt: self._do_ocr(opt_path), 0.3)
+
+    def _optimize_image(self, image_path):
+        """명함 사진 최적화: 긴 변 1600px로 리사이즈, 회전 보정."""
+        try:
+            from PIL import Image as PILImage, ImageOps
+            img = PILImage.open(image_path)
+            # EXIF 회전 보정 (카메라 사진이 눕는 문제)
+            img = ImageOps.exif_transpose(img)
+            # 긴 변 기준 리사이즈
+            max_side = 1600
+            w, h = img.size
+            if max(w, h) > max_side:
+                ratio = max_side / float(max(w, h))
+                img = img.resize((int(w * ratio), int(h * ratio)), PILImage.LANCZOS)
+            # RGB 변환 (PNG 등 대비)
+            if img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+            out = image_path.rsplit(".", 1)[0] + "_opt.jpg"
+            img.save(out, "JPEG", quality=90)
+            return out if os.path.exists(out) else image_path
+        except Exception as e:
+            print("이미지 최적화 실패:", e)
+            return image_path
 
     def _do_ocr(self, image_path):
         if platform == "android":
@@ -801,24 +825,33 @@ class CLBusinessCardApp(App):
 
     def _load_import(self, path):
         try:
+            if not path or not os.path.exists(path):
+                toast("파일을 찾을 수 없어요")
+                return
             # 파일 종류 판별: 확장자 + 매직바이트(안드로이드는 확장자 없을 수 있음)
             lower = path.lower()
             with open(path, "rb") as f:
                 head = f.read(4)
             is_xlsx = lower.endswith(".xlsx") or head[:2] == b"PK"  # xlsx=ZIP=PK
 
+            kind = ""
             if is_xlsx:
+                kind = "엑셀"
                 self.import_preview = parse_xlsx(path)
             else:
                 with open(path, "r", encoding="utf-8", errors="ignore") as f:
                     text = f.read()
                 if lower.endswith(".vcf") or "BEGIN:VCARD" in text.upper():
+                    kind = "vCard"
                     self.import_preview = parse_vcard(text)
                 else:
+                    kind = "CSV"
                     self.import_preview = parse_csv(text)
 
             if not self.import_preview:
-                toast("가져올 명함이 없어요. 파일 형식을 확인해주세요")
+                toast("%s 파일에서 명함을 못 찾았어요" % kind)
+            else:
+                toast("%s에서 %d개 명함 발견!" % (kind, len(self.import_preview)))
             self.refresh()
         except Exception as e:
             toast("파일 읽기 실패: %s" % e)
