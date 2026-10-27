@@ -40,16 +40,13 @@ jobs:
           pip install buildozer==1.5.0
           pip install cython==0.29.33
 
-      # 캐시 비활성화: 이전 빌드의 불완전한 산출물이 복원되어
-      # buildozer가 작업을 스킵하고 APK를 안 만드는 문제 방지.
-      # SDK/NDK만 별도 캐시 (빌드 산출물 .buildozer/android/platform/build* 제외)
-      - name: SDK/NDK 캐시 (빌드산출물 제외)
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.buildozer/android/platform/android-sdk
-            ~/.buildozer/android/platform/android-ndk-r25b
-          key: sdk-ndk-v1
+      # 캐시 완전 비활성화: 불완전한 SDK/NDK 캐시가 복원되어
+      # sdkmanager 없음 오류로 빌드가 조기 종료되던 문제 방지.
+      # 매번 깨끗하게 전체 다운로드+빌드 (느리지만 확실).
+      - name: 이전 buildozer 흔적 제거
+        run: |
+          rm -rf ~/.buildozer .buildozer 2>/dev/null || true
+          echo "깨끗한 상태에서 시작"
 
       - name: Android SDK 라이선스 사전 동의
         run: |
