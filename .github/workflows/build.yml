@@ -57,38 +57,32 @@ jobs:
           echo "=== buildozer 종료코드 ==="
           cat build_exit.txt 2>/dev/null || echo "BUILDOZER_EXIT=unknown"
 
-      - name: 빌드 성공 판정 (APK 존재 여부로)
+      - name: APK 수집 및 성공 판정
         id: check
-        run: |
-          # bin/ 또는 dists에 APK가 있으면 성공으로 간주
-          APK=$(ls bin/*.apk 2>/dev/null | head -1)
-          if [ -z "$APK" ]; then
-            APK=$(find .buildozer -name "*-debug*.apk" 2>/dev/null | head -1)
-          fi
-          if [ -n "$APK" ] && [ -f "$APK" ]; then
-            echo "apk_exists=true" >> $GITHUB_OUTPUT
-            echo "✅ APK 생성 확인: $APK"
-          else
-            echo "apk_exists=false" >> $GITHUB_OUTPUT
-            echo "❌ APK 없음 — 빌드 실패"
-            exit 1
-          fi
-
-      - name: APK 파일 찾아서 모으기
         if: always()
         run: |
           mkdir -p apk_out
-          echo "=== bin/ 폴더 APK ==="
-          # buildozer는 bin/ 에 최종 APK를 둠. 없으면 dists에서 찾기
-          cp bin/*.apk apk_out/ 2>/dev/null && echo "bin/에서 복사됨" || echo "bin/에 없음"
-          # 혹시 bin에 없으면 빌드 산출물 경로에서 찾기 (접근가능 범위만)
-          if [ -z "$(ls -A apk_out 2>/dev/null)" ]; then
-            find .buildozer -name "*-debug*.apk" 2>/dev/null | while read -r f; do
-              cp "$f" apk_out/ && echo "복사: $f"
-            done
+          echo "=== bin/ 디렉토리 내용 ==="
+          ls -la bin/ 2>/dev/null || echo "bin/ 없음"
+          echo "=== 워크스페이스 전체 APK 검색 ==="
+          # 작업 디렉토리 내 모든 apk (권한 문제 없는 범위)
+          FOUND=$(find . -name "*.apk" 2>/dev/null)
+          echo "$FOUND"
+          # 전부 복사
+          echo "$FOUND" | while read -r f; do
+            [ -f "$f" ] && cp -f "$f" apk_out/ 2>/dev/null && echo "복사됨: $f"
+          done
+          echo "=== apk_out 결과 ==="
+          ls -lh apk_out/ 2>/dev/null
+          # 판정
+          if ls apk_out/*.apk >/dev/null 2>&1; then
+            echo "apk_exists=true" >> $GITHUB_OUTPUT
+            echo "✅ APK 확보 성공"
+          else
+            echo "apk_exists=false" >> $GITHUB_OUTPUT
+            echo "❌ APK 없음"
+            exit 1
           fi
-          echo "=== apk_out 최종 내용 ==="
-          ls -lh apk_out/ 2>/dev/null || echo "APK 없음"
 
       - name: APK 업로드 (다운로드 가능)
         if: always()
