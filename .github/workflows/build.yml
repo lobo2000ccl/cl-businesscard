@@ -73,7 +73,19 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
-      - name: 빌드 로그 업로드 (실패 시 디버깅용)
+      - name: 빌드 로그를 저장소에 커밋 (디버깅용)
+        if: always()
+        run: |
+          # 로그 마지막 300줄만 저장소에 push (Claude가 읽을 수 있도록)
+          mkdir -p _buildlogs
+          tail -300 build.log > _buildlogs/last_build.log 2>/dev/null || echo "no build.log" > _buildlogs/last_build.log
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git add -f _buildlogs/last_build.log
+          git commit -m "ci: 빌드 로그 저장 [skip ci]" || echo "변경 없음"
+          git push origin main || echo "push 실패"
+
+      - name: 빌드 로그 업로드 (아티팩트)
         if: always()
         uses: actions/upload-artifact@v4
         with:
