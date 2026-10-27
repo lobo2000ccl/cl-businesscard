@@ -1,0 +1,5 @@
+# 데스크톱(PC)에서 테스트용 — 안드로이드 빌드와 별개
+kivy==2.3.0
+pillow
+pytesseract
+plyer

@@ -1,0 +1,71 @@
+name: Build Android APK
+
+# 수동 실행 또는 코드 푸시 시 자동 빌드
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:   # GitHub 웹에서 수동 실행 버튼
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 3.11 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 시스템 패키지 설치
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git zip unzip openjdk-17-jdk python3-pip \
+            autoconf libtool pkg-config zlib1g-dev \
+            libncurses-dev libncursesw5-dev libtinfo6 \
+            cmake libffi-dev libssl-dev build-essential \
+            libltdl-dev
+
+      - name: Buildozer 및 의존성 설치
+        run: |
+          python -m pip install --upgrade pip
+          pip install buildozer cython==0.29.36
+
+      - name: Buildozer 캐시 복원
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            .buildozer
+          key: buildozer-${{ hashFiles('buildozer.spec') }}
+          restore-keys: buildozer-
+
+      - name: APK 빌드
+        run: |
+          yes | buildozer -v android debug 2>&1 | tee build.log
+
+      - name: APK 파일 찾기
+        id: findapk
+        run: |
+          APK=$(find bin -name "*.apk" | head -1)
+          echo "apk_path=$APK" >> $GITHUB_OUTPUT
+          echo "빌드된 APK: $APK"
+
+      - name: APK 업로드 (다운로드 가능)
+        uses: actions/upload-artifact@v4
+        with:
+          name: CL-BusinessCard-APK
+          path: bin/*.apk
+          retention-days: 30
+
+      - name: 빌드 로그 업로드 (실패 시 디버깅용)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 7
