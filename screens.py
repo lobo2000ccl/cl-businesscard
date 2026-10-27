@@ -72,12 +72,12 @@ def build_list_screen(app):
                  size=(dp(52), dp(52))) if os.path.exists("icon.png") else Widget(size_hint=(None, None), size=(dp(52), dp(52)))
     title_box.add_widget(icon)
     tcol = BoxLayout(orientation="vertical")
-    tcol.add_widget(Label(text="CL BUSINESS CARD", font_name=FONT, font_size=dp(10),
-                          color=(1, 1, 1, 0.65), bold=True, halign="left", valign="bottom",
+    tcol.add_widget(Label(text="CL명함첩", font_name=FONT, font_size=dp(11),
+                          color=(1, 1, 1, 0.7), bold=True, halign="left", valign="bottom",
                           text_size=(dp(250), dp(16)), size_hint_y=None, height=dp(16)))
-    tcol.add_widget(Label(text="림 명함집", font_name=FONT, font_size=dp(24),
+    tcol.add_widget(Label(text="CL", font_name=FONT, font_size=dp(30),
                           color=WHITE, bold=True, halign="left", valign="middle",
-                          text_size=(dp(250), dp(30)), size_hint_y=None, height=dp(30)))
+                          text_size=(dp(250), dp(34)), size_hint_y=None, height=dp(34)))
     tcol.add_widget(Label(text="총 %d개의 명함" % len(app.cards), font_name=FONT,
                           font_size=dp(12), color=(1, 1, 1, 0.7), halign="left",
                           valign="top", text_size=(dp(250), dp(16)), size_hint_y=None, height=dp(16)))

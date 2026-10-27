@@ -1,7 +1,7 @@
 [app]
 
 # 앱 이름 (홈화면에 표시)
-title = CL Business Card
+title = CL명함첩
 
 # 패키지 이름 (영문/숫자만)
 package.name = clbusinesscard
