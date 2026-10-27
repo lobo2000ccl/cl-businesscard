@@ -30,7 +30,7 @@ version = 1.0
 # 주의: pytesseract는 안드로이드에서 Tesseract 엔진 바이너리가 별도 필요합니다.
 # 현재는 안정성을 위해 OCR 없이 수동입력 중심으로 동작하며,
 # 사진은 그대로 저장됩니다. (OCR 고도화는 추후 tesseract4android 연동 예정)
-requirements = python3,kivy==2.3.0,pillow,pyjnius,plyer,android
+requirements = python3,kivy==2.3.1,pillow,pyjnius,plyer,android
 
 # 화면 방향 (세로 고정)
 orientation = portrait
