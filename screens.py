@@ -481,8 +481,11 @@ def build_import_screen(app):
         root.add_widget(bb)
         return root
 
-    drop = MintButton(bg=M1, fg=M5, radius=20, size_hint_y=None, height=dp(150))
-    drop.text = "📂\n파일 가져오기\n\n✅ vCard (.vcf) — 스마트폰 연락처\n✅ CSV (.csv) — 엑셀 내보내기"
+    drop = MintButton(bg=M1, fg=M5, radius=20, size_hint_y=None, height=dp(170))
+    drop.text = ("📂\n파일 가져오기\n\n"
+                 "✅ Excel (.xlsx) — 리멤버 등 명함앱 내보내기\n"
+                 "✅ vCard (.vcf) — 스마트폰 연락처\n"
+                 "✅ CSV (.csv) — 엑셀 내보내기")
     drop.font_name = FONT
     drop.font_size = dp(14)
     drop.halign = "center"
@@ -490,13 +493,13 @@ def build_import_screen(app):
     root.add_widget(drop)
 
     guide = RoundBox(bg_color=WHITE, radius=14, orientation="vertical",
-                     size_hint_y=None, height=dp(120), padding=dp(16), spacing=dp(8))
-    guide.add_widget(Label(text="📋 CSV 파일 형식", font_name=FONT, font_size=dp(14),
+                     size_hint_y=None, height=dp(130), padding=dp(16), spacing=dp(8))
+    guide.add_widget(Label(text="💡 리멤버 앱 명함 가져오기", font_name=FONT, font_size=dp(14),
                            bold=True, color=TEXT, size_hint_y=None, height=dp(20),
                            halign="left", valign="middle", text_size=(dp(330), dp(20))))
-    guide.add_widget(Label(text="이름,회사,부서,직책,전화,이메일,주소\n홍길동,삼성전자,개발팀,과장,010-...",
+    guide.add_widget(Label(text="리멤버 앱 → 내보내기 → 엑셀(.xlsx) 저장 후\n여기서 그 파일을 선택하면 명함이 한번에 등록돼요!",
                            font_name=FONT, font_size=dp(12), color=SUB, halign="left",
-                           valign="top", text_size=(dp(330), dp(60))))
+                           valign="top", text_size=(dp(330), dp(70))))
     root.add_widget(guide)
     root.add_widget(Widget())
     return root

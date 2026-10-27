@@ -213,26 +213,91 @@ def parse_vcard(text):
     return cards
 
 
+# 컬럼명 → 필드 매핑 (리멤버 앱 내보내기 + 일반 엑셀/CSV 모두 대응)
+COLUMN_MAP = {
+    "회사": "company", "회사명": "company", "company": "company",
+    "이름": "name", "성명": "name", "name": "name",
+    "부서": "department", "부서명": "department", "department": "department",
+    "직함": "title", "직책": "title", "직위": "title", "title": "title",
+    "전자 메일 주소": "email", "이메일": "email", "email": "email",
+    "e-mail": "email", "메일": "email",
+    "휴대폰": "phone", "휴대전화": "phone", "핸드폰": "phone", "mobile": "phone", "hp": "phone",
+    "근무처 전화": "phone_work", "전화": "phone_work", "회사전화": "phone_work", "tel": "phone_work",
+    "근무지 주소 번지": "address", "근무지 주소": "address", "주소": "address", "address": "address",
+    "메모": "memo", "memo": "memo", "비고": "memo",
+}
+
+
+def _map_header(h):
+    h = (h or "").strip()
+    return COLUMN_MAP.get(h) or COLUMN_MAP.get(h.lower())
+
+
+def _row_to_card(idx, getval):
+    """헤더인덱스 맵 idx와 값 접근 함수 getval로 명함 dict 생성."""
+    def field(k):
+        if k in idx:
+            v = getval(idx[k])
+            return str(v).strip() if v is not None else ""
+        return ""
+    name = field("name")
+    if not name:
+        return None
+    phone = field("phone") or field("phone_work")  # 휴대폰 우선
+    return {"name": name, "company": field("company"), "department": field("department"),
+            "title": field("title"), "phone": phone, "email": field("email"),
+            "address": field("address"), "memo": field("memo"), "photo": ""}
+
+
 def parse_csv(text):
     lines = text.strip().split("\n")
     if len(lines) < 2:
         return []
-    headers = [h.strip().lower() for h in lines[0].split(",")]
-    cmap = {"이름": "name", "name": "name", "회사": "company", "company": "company",
-            "부서": "department", "department": "department", "직책": "title", "title": "title",
-            "전화": "phone", "phone": "phone", "이메일": "email", "email": "email",
-            "주소": "address", "address": "address", "메모": "memo", "memo": "memo"}
+    headers = [h.strip().strip('"') for h in lines[0].split(",")]
+    idx = {}
+    for i, h in enumerate(headers):
+        key = _map_header(h)
+        if key and key not in idx:
+            idx[key] = i
     out = []
     for line in lines[1:]:
         vals = [v.strip().strip('"') for v in line.split(",")]
-        c = {"name": "", "company": "", "department": "", "title": "",
-             "phone": "", "email": "", "address": "", "memo": "", "photo": ""}
-        for i, hd in enumerate(headers):
-            if hd in cmap and i < len(vals):
-                c[cmap[hd]] = vals[i]
-        if c["name"]:
-            out.append(c)
+        card = _row_to_card(idx, lambda i, vv=vals: vv[i] if i < len(vv) else "")
+        if card:
+            out.append(card)
     return out
+
+
+def parse_xlsx(path):
+    """엑셀(.xlsx) 파일에서 명함 목록 추출. 리멤버 앱 내보내기 형식 지원."""
+    try:
+        import openpyxl
+    except Exception as e:
+        print("openpyxl 없음:", e)
+        return []
+    try:
+        wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        if len(rows) < 2:
+            return []
+        headers = [str(h).strip() if h is not None else "" for h in rows[0]]
+        idx = {}
+        for i, h in enumerate(headers):
+            key = _map_header(h)
+            if key and key not in idx:
+                idx[key] = i
+        out = []
+        for row in rows[1:]:
+            if not row or all(c is None for c in row):
+                continue
+            card = _row_to_card(idx, lambda i, rr=row: rr[i] if i < len(rr) else "")
+            if card:
+                out.append(card)
+        return out
+    except Exception as e:
+        print("xlsx 파싱 실패:", e)
+        return []
 
 
 # ────────────────────────────────────────────────
@@ -732,20 +797,28 @@ class CLBusinessCardApp(App):
             except Exception as e:
                 toast("파일 열기 실패: %s" % e)
         else:
-            self._desktop_file_chooser(self._load_import, ["*.vcf", "*.csv"])
+            self._desktop_file_chooser(self._load_import, ["*.vcf", "*.csv", "*.xlsx"])
 
     def _load_import(self, path):
         try:
-            # content Uri를 복사한 캐시파일은 확장자가 없을 수 있어 내용으로 판별
-            with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                text = f.read()
-            # 확장자 또는 내용으로 vCard/CSV 판별
-            if path.lower().endswith(".vcf") or "BEGIN:VCARD" in text.upper():
-                self.import_preview = parse_vcard(text)
+            # 파일 종류 판별: 확장자 + 매직바이트(안드로이드는 확장자 없을 수 있음)
+            lower = path.lower()
+            with open(path, "rb") as f:
+                head = f.read(4)
+            is_xlsx = lower.endswith(".xlsx") or head[:2] == b"PK"  # xlsx=ZIP=PK
+
+            if is_xlsx:
+                self.import_preview = parse_xlsx(path)
             else:
-                self.import_preview = parse_csv(text)
+                with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                    text = f.read()
+                if lower.endswith(".vcf") or "BEGIN:VCARD" in text.upper():
+                    self.import_preview = parse_vcard(text)
+                else:
+                    self.import_preview = parse_csv(text)
+
             if not self.import_preview:
-                toast("가져올 명함이 없어요")
+                toast("가져올 명함이 없어요. 파일 형식을 확인해주세요")
             self.refresh()
         except Exception as e:
             toast("파일 읽기 실패: %s" % e)
