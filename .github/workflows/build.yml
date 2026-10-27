@@ -6,6 +6,10 @@ on:
     branches: [ main, master ]
   workflow_dispatch:   # GitHub 웹에서 수동 실행 버튼
 
+permissions:
+  contents: write
+  issues: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -73,24 +77,26 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
-      - name: 빌드 로그를 저장소에 커밋 (디버깅용)
-        if: always()
+      - name: 빌드 로그를 Issue로 전송 (디버깅용)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p _buildlogs
-          # 에러 키워드 주변 + 마지막 500줄 저장
-          echo "===== build.log 마지막 500줄 =====" > _buildlogs/last_build.log
-          tail -500 build.log >> _buildlogs/last_build.log 2>/dev/null || echo "build.log 없음" >> _buildlogs/last_build.log
-          echo "" >> _buildlogs/last_build.log
-          echo "===== ERROR/Exception/Traceback 라인 =====" >> _buildlogs/last_build.log
-          grep -niE "error|exception|traceback|failed|fatal|command failed|aidl|sdkmanager|not found" build.log 2>/dev/null | tail -60 >> _buildlogs/last_build.log || true
-          git config user.email "actions@github.com"
-          git config user.name "GitHub Actions"
-          git fetch origin main
-          git checkout main
-          git pull origin main --no-edit || true
-          git add -f _buildlogs/last_build.log
-          git commit -m "ci: 빌드 로그 저장 [skip ci]" --allow-empty
-          git push origin main
+          # 에러 라인 + 마지막 100줄 추출
+          {
+            echo "## 빌드 실패 로그"
+            echo '### ERROR/Exception 라인'
+            echo '```'
+            grep -niE "error|exception|traceback|failed|fatal|command failed|aidl|sdkmanager|no module|not found|cython|recipe" build.log 2>/dev/null | tail -50 || echo "(에러 라인 없음)"
+            echo '```'
+            echo '### build.log 마지막 120줄'
+            echo '```'
+            tail -120 build.log 2>/dev/null || echo "(build.log 없음)"
+            echo '```'
+          } > issue_body.md
+          gh issue create --title "빌드 로그 $(date +%H%M)" --body-file issue_body.md 2>&1 || \
+            gh issue comment 1 --body-file issue_body.md 2>&1 || \
+            echo "Issue 전송 실패"
 
       - name: 빌드 로그 업로드 (아티팩트)
         if: always()
