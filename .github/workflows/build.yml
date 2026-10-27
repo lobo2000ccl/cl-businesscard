@@ -51,8 +51,28 @@ jobs:
 
       - name: APK 빌드
         run: |
-          set -o pipefail
-          yes | buildozer -v android debug 2>&1 | tee build.log
+          # yes의 SIGPIPE 종료가 스텝을 죽이지 않도록 pipefail 미사용
+          # 대신 buildozer 종료코드를 별도 파일로 저장
+          (buildozer -v android debug; echo "BUILDOZER_EXIT=$?" > build_exit.txt) 2>&1 | tee build.log || true
+          echo "=== buildozer 종료코드 ==="
+          cat build_exit.txt 2>/dev/null || echo "BUILDOZER_EXIT=unknown"
+
+      - name: 빌드 성공 판정 (APK 존재 여부로)
+        id: check
+        run: |
+          # bin/ 또는 dists에 APK가 있으면 성공으로 간주
+          APK=$(ls bin/*.apk 2>/dev/null | head -1)
+          if [ -z "$APK" ]; then
+            APK=$(find .buildozer -name "*-debug*.apk" 2>/dev/null | head -1)
+          fi
+          if [ -n "$APK" ] && [ -f "$APK" ]; then
+            echo "apk_exists=true" >> $GITHUB_OUTPUT
+            echo "✅ APK 생성 확인: $APK"
+          else
+            echo "apk_exists=false" >> $GITHUB_OUTPUT
+            echo "❌ APK 없음 — 빌드 실패"
+            exit 1
+          fi
 
       - name: APK 파일 찾아서 모으기
         if: always()
@@ -80,7 +100,7 @@ jobs:
           if-no-files-found: warn
 
       - name: APK를 Release로 발행 (폰에서 직접 다운로드)
-        if: success()
+        if: always() && steps.check.outputs.apk_exists == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
