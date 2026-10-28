@@ -95,16 +95,17 @@ def build_list_screen(app):
                              foreground_color=TEXT, cursor_color=M4, padding=[0, dp(12)])
     search_input.bind(text=lambda inst, val: app.set_search(val))
     search_box.add_widget(search_input)
-    sort_spinner = M.Spinner(text={"name": "이름순", "company": "회사순",
-                                   "createdAt": "등록순"}.get(app.sort_by, "이름순"),
-                             values=("이름순", "회사순", "등록순"), font_name=FONT,
-                             font_size=dp(12), size_hint_x=None, width=dp(66),
-                             background_color=M1, color=SUB)
-    def on_sort(inst, val):
-        app.sort_by = {"이름순": "name", "회사순": "company", "등록순": "createdAt"}[val]
+    # 정렬 버튼 (탭하면 순환) — Spinner 드롭다운 UI 버그 회피
+    sort_labels = {"name": "이름순", "company": "회사순", "createdAt": "등록순"}
+    sort_order = ["name", "company", "createdAt"]
+    sort_btn = MintButton(text=sort_labels.get(app.sort_by, "이름순"), bg=M1, fg=M5,
+                          radius=8, font_size=dp(12), size_hint_x=None, width=dp(70))
+    def on_sort(*a):
+        cur = sort_order.index(app.sort_by) if app.sort_by in sort_order else 0
+        app.sort_by = sort_order[(cur + 1) % len(sort_order)]
         app.refresh()
-    sort_spinner.bind(text=on_sort)
-    search_box.add_widget(sort_spinner)
+    sort_btn.bind(on_release=on_sort)
+    search_box.add_widget(sort_btn)
     banner.add_widget(search_box)
     root.add_widget(banner)
 

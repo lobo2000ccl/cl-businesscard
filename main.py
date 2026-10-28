@@ -298,35 +298,28 @@ def parse_csv(text):
 
 
 def parse_xlsx(path):
-    """엑셀(.xlsx) 파일에서 명함 목록 추출. 리멤버 앱 내보내기 형식 지원."""
-    try:
-        import openpyxl
-    except Exception as e:
-        print("openpyxl 없음:", e)
+    """엑셀(.xlsx) 파일에서 명함 목록 추출. 리멤버 앱 내보내기 형식 지원.
+    에러는 예외로 던져서 상위에서 화면에 표시되게 함."""
+    import openpyxl  # 실패 시 ImportError가 상위로 전달됨
+    wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if len(rows) < 2:
         return []
-    try:
-        wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
-        ws = wb.active
-        rows = list(ws.iter_rows(values_only=True))
-        if len(rows) < 2:
-            return []
-        headers = [str(h).strip() if h is not None else "" for h in rows[0]]
-        idx = {}
-        for i, h in enumerate(headers):
-            key = _map_header(h)
-            if key and key not in idx:
-                idx[key] = i
-        out = []
-        for row in rows[1:]:
-            if not row or all(c is None for c in row):
-                continue
-            card = _row_to_card(idx, lambda i, rr=row: rr[i] if i < len(rr) else "")
-            if card:
-                out.append(card)
-        return out
-    except Exception as e:
-        print("xlsx 파싱 실패:", e)
-        return []
+    headers = [str(h).strip() if h is not None else "" for h in rows[0]]
+    idx = {}
+    for i, h in enumerate(headers):
+        key = _map_header(h)
+        if key and key not in idx:
+            idx[key] = i
+    out = []
+    for row in rows[1:]:
+        if not row or all(c is None for c in row):
+            continue
+        card = _row_to_card(idx, lambda i, rr=row: rr[i] if i < len(rr) else "")
+        if card:
+            out.append(card)
+    return out
 
 
 # ────────────────────────────────────────────────
@@ -793,12 +786,11 @@ class CLBusinessCardApp(App):
             self.show_error_popup("카메라 실행 실패:\n%s\n%s" % (e, traceback.format_exc()))
 
     def _camera_done(self, path):
-        toast("② 촬영 결과 받음")
         try:
             if path and os.path.exists(path):
                 self.on_photo_captured(path)
             else:
-                toast("촬영이 취소됐거나 사진이 없어요")
+                toast("촬영이 취소됐어요")
         except Exception as e:
             self.show_error_popup("촬영 후 처리 실패:\n%s\n%s" % (e, traceback.format_exc()))
 
