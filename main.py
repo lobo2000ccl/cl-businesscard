@@ -145,18 +145,22 @@ def parse_card_text(text):
     if m:
         r["email"] = re.sub(r"^[A-Za-z]\.", "", m.group(0))
 
-    # 전화 (모바일 우선)
-    mob = re.search(r"(?:M|Mobile|휴대|핸드폰|H\.P)[\s.:]*([+]?[0-9][0-9\-\s]{8,})", text, re.I)
+    # 전화 (모바일 우선) — 구분자: - . 공백 모두 허용
+    def _norm_phone(s):
+        return re.sub(r"[.\s]+", "-", s.strip()).strip("-")
+    mob = re.search(r"(?:M|Mobile|휴대|핸드폰|H\.?P)[\s.:]*([+]?01[0-9][\-.\s]?[0-9]{3,4}[\-.\s]?[0-9]{4})", text, re.I)
     if mob:
-        r["phone"] = re.sub(r"\s+", "-", mob.group(1).strip()).strip("-")
+        r["phone"] = _norm_phone(mob.group(1))
     else:
-        allp = re.findall(r"01[016789][\-\s]?[0-9]{3,4}[\-\s]?[0-9]{4}", text)
+        # 010/011 등 휴대폰 (점/하이픈/공백)
+        allp = re.findall(r"01[016789][\-.\s]?[0-9]{3,4}[\-.\s]?[0-9]{4}", text)
         if allp:
-            r["phone"] = re.sub(r"[\s]+", "-", allp[0])
+            r["phone"] = _norm_phone(allp[0])
         else:
-            anyp = re.findall(r"[\+]?[0-9]{2,4}[\-\s][0-9]{3,4}[\-\s][0-9]{3,4}", text)
+            # 일반 전화 (지역번호 등), M. 표시 우선
+            anyp = re.findall(r"[0-9]{2,4}[\-.\s][0-9]{3,4}[\-.\s][0-9]{4}", text)
             if anyp:
-                r["phone"] = re.sub(r"\s+", "-", anyp[-1])
+                r["phone"] = _norm_phone(anyp[0])
 
     # 직책 (가장 구체적인 것 우선)
     found = [t for t in TITLE_WORDS if t in text]

@@ -131,8 +131,14 @@ class CropWidget(FloatLayout):
             cropped = pil.crop((left, top, right, bottom))
             if cropped.mode not in ("RGB", "L"):
                 cropped = cropped.convert("RGB")
+            # OCR 정확도를 위해 크롭 결과가 작으면 업스케일 (긴 변 1600px 이상 보장)
+            cw, ch = cropped.size
+            target = 1600
+            if max(cw, ch) < target:
+                ratio = target / float(max(cw, ch))
+                cropped = cropped.resize((int(cw * ratio), int(ch * ratio)), PILImage.LANCZOS)
             out = self.image_path.rsplit(".", 1)[0] + "_crop.jpg"
-            cropped.save(out, "JPEG", quality=92)
+            cropped.save(out, "JPEG", quality=95)
             return out if os.path.exists(out) else self.image_path
         except Exception as e:
             print("크롭 실패:", e)

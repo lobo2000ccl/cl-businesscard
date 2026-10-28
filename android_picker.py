@@ -11,6 +11,7 @@ from kivy.clock import Clock
 
 _callback = None
 _capture_path = None
+_capture_uri = None
 _bound = False
 
 
@@ -45,25 +46,28 @@ def _on_activity_result(request_code, result_code, intent):
             return
 
         if request_code == 1001:
-            # 카메라 — 썸네일 Bitmap이 intent.getExtras()["data"]로 옴
+            # 카메라 — MediaStore URI에 고해상도 원본 저장됨
+            global _capture_uri
+            try:
+                if _capture_uri is not None:
+                    path = _copy_uri_to_cache(_capture_uri)
+                    if path:
+                        _deliver(path)
+                        return
+            except Exception as e:
+                print("카메라 원본 처리 실패:", e)
+            # fallback: 썸네일
             try:
                 if intent is not None:
                     extras = intent.getExtras()
                     if extras is not None:
-                        from jnius import autoclass
                         bmp = extras.get("data")
                         if bmp is not None:
-                            path = _save_bitmap(bmp)
-                            _deliver(path)
+                            _deliver(_save_bitmap(bmp))
                             return
             except Exception as e:
-                print("카메라 썸네일 처리 실패:", e)
-            # fallback: 지정 경로 파일
-            global _capture_path
-            if _capture_path and os.path.exists(_capture_path):
-                _deliver(_capture_path)
-            else:
-                _deliver(None)
+                print("썸네일 fallback 실패:", e)
+            _deliver(None)
         elif request_code in (1002, 1003):
             # 갤러리/파일 — intent.getData()의 Uri → 실제 파일로 복사
             if intent is None:
@@ -187,21 +191,34 @@ def _save_bitmap(bmp):
 # 공개 API
 # ─────────────────────────────────────
 def take_photo(callback):
-    """카메라로 촬영. 완료 시 callback(path 또는 None)."""
-    global _callback, _capture_path
+    """카메라로 촬영 (고해상도). MediaStore URI에 원본 저장 → FileProvider 불필요."""
+    global _callback, _capture_uri
+    _capture_uri = None
     if platform != "android":
         callback(None)
         return
     try:
         _ensure_bound()
-        from jnius import autoclass
+        from jnius import autoclass, cast
         PythonActivity = autoclass("org.kivy.android.PythonActivity")
         Intent = autoclass("android.content.Intent")
         MediaStore = autoclass("android.provider.MediaStore")
+        ContentValues = autoclass("android.content.ContentValues")
         activity = PythonActivity.mActivity
 
-        # EXTRA_OUTPUT 없이 호출 → 썸네일 Bitmap이 결과로 옴 (FileProvider 불필요, 크래시 없음)
+        # MediaStore에 이미지 엔트리 생성 → 그 URI를 EXTRA_OUTPUT으로 (고해상도 원본 저장)
+        values = ContentValues()
+        MediaColumns = autoclass("android.provider.MediaStore$MediaColumns")
+        values.put(MediaColumns.DISPLAY_NAME, "cl_card_%d.jpg" % int(datetime.now().timestamp()))
+        values.put(MediaColumns.MIME_TYPE, "image/jpeg")
+        Images = autoclass("android.provider.MediaStore$Images$Media")
+        resolver = activity.getContentResolver()
+        _capture_uri = resolver.insert(Images.EXTERNAL_CONTENT_URI, values)
+
         intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+        if _capture_uri is not None:
+            intent.putExtra(MediaStore.EXTRA_OUTPUT, cast("android.os.Parcelable", _capture_uri))
+            intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         _callback = callback
         activity.startActivityForResult(intent, 1001)
     except Exception as e:
