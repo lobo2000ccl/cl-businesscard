@@ -754,17 +754,32 @@ class CLBusinessCardApp(App):
             toast("갤러리 열기 실패: %s" % e)
 
     def _desktop_file_chooser(self, callback, filters):
-        from kivy.uix.filechooser import FileChooserIconView
-        popup = Popup(title="파일 선택", title_font=FONT, size_hint=(0.95, 0.9))
+        from kivy.uix.filechooser import FileChooserListView
+        popup = Popup(title="파일 선택 (더블클릭 또는 선택 후 아래 버튼)", title_font=FONT,
+                      size_hint=(0.95, 0.9))
         box = BoxLayout(orientation="vertical")
-        fc = FileChooserIconView(filters=filters, path=os.path.expanduser("~"))
+        # 필터 없이 전체 표시 (한글 파일명/대소문자 문제 회피)
+        start = os.path.expanduser("~")
+        fc = FileChooserListView(path=start)
         box.add_widget(fc)
-        pick = MintButton(text="선택", bg=M4, radius=10, size_hint_y=None, height=dp(48))
+        info = Label(text="선택된 파일: 없음", font_name=FONT, font_size=dp(12),
+                     color=SUB, size_hint_y=None, height=dp(24))
+        box.add_widget(info)
+        fc.bind(selection=lambda inst, sel: setattr(
+            info, "text", "선택: " + (os.path.basename(sel[0]) if sel else "없음")))
+        pick = MintButton(text="✅ 이 파일 선택", bg=M4, radius=10,
+                          size_hint_y=None, height=dp(48))
         def do_pick(*a):
             if fc.selection:
+                path = fc.selection[0]
                 popup.dismiss()
-                callback(fc.selection[0])
+                callback(path)
+            else:
+                info.text = "먼저 파일을 선택(클릭)해주세요"
         pick.bind(on_release=do_pick)
+        # 더블클릭(파일 바로 열기)도 지원
+        fc.bind(on_submit=lambda inst, sel, touch: (popup.dismiss(), callback(sel[0]))
+                if sel else None)
         box.add_widget(pick)
         popup.content = box
         popup.open()
