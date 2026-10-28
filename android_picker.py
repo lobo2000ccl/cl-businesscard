@@ -39,11 +39,24 @@ def _deliver(path):
 
 def _on_activity_result(request_code, result_code, intent):
     print("[picker] activity result: req=%s res=%s" % (request_code, result_code))
+    # 진단: 결과 코드를 화면에 표시
+    try:
+        from kivy.clock import Clock as _C
+        def _t(dt):
+            try:
+                from main import toast as _toast
+                _toast("결과코드=%s (요청=%s)" % (result_code, request_code))
+            except Exception:
+                pass
+        _C.schedule_once(_t, 0)
+    except Exception:
+        pass
     try:
         from jnius import autoclass, cast
         Activity = autoclass("android.app.Activity")
-        if result_code != Activity.RESULT_OK:
-            print("[picker] result not OK")
+        # RESULT_OK는 보통 -1. 다른 값이면 취소/실패지만, intent에 데이터가 있으면 진행
+        if result_code != Activity.RESULT_OK and intent is None:
+            print("[picker] result not OK and no intent")
             _deliver(None)
             return
 
