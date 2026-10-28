@@ -1,15 +1,40 @@
 # -*- coding: utf-8 -*-
 """
-CL Business Card — 림 명함집
+CL명함첩 — CL Business Card
 Kivy 기반 안드로이드 명함 관리 앱
 """
 import os
 import json
 import re
+import traceback
 from datetime import datetime
 
 from kivy.app import App
 from kivy.core.window import Window
+from kivy.base import ExceptionHandler, ExceptionManager
+
+
+# ── 전역 예외 핸들러: 크래시 대신 에러를 화면에 표시 ──
+class _CrashHandler(ExceptionHandler):
+    def handle_exception(self, inst):
+        try:
+            tb = traceback.format_exc()
+            print("=== 처리되지 않은 예외 ===\n", tb)
+            # 에러를 파일로도 저장
+            try:
+                from kivy.app import App as _A
+                app = _A.get_running_app()
+                if app:
+                    app.show_error_popup(tb)
+            except Exception:
+                pass
+        except Exception:
+            pass
+        # 앱을 죽이지 않고 계속 실행
+        return ExceptionManager.PASS
+
+
+ExceptionManager.add_handler(_CrashHandler())
 from kivy.core.text import LabelBase
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
@@ -476,8 +501,29 @@ def run_ocr(image_path):
 # 메인 앱
 # ────────────────────────────────────────────────
 class CLBusinessCardApp(App):
+    def show_error_popup(self, msg):
+        """크래시/에러 내용을 스크롤 가능한 팝업으로 표시."""
+        try:
+            from kivy.uix.scrollview import ScrollView as _SV
+            content = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(10))
+            sv = _SV()
+            lbl = Label(text=str(msg)[-2000:], font_name=FONT, font_size=dp(11),
+                        color=TEXT, size_hint_y=None, halign="left", valign="top")
+            lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)),
+                     texture_size=lambda i, s: setattr(i, "height", s[1]))
+            sv.add_widget(lbl)
+            content.add_widget(sv)
+            close = MintButton(text="닫기", bg=M4, radius=10, size_hint_y=None, height=dp(44))
+            popup = Popup(title="오류 내용 (캡처해서 알려주세요)", title_font=FONT,
+                          size_hint=(0.95, 0.8), content=content)
+            close.bind(on_release=lambda *a: popup.dismiss())
+            content.add_widget(close)
+            popup.open()
+        except Exception as e:
+            print("에러팝업 표시 실패:", e)
+
     def build(self):
-        self.title = "CL Business Card"
+        self.title = "CL명함첩"
         Window.clearcolor = BG
         self.cards = load_cards()
         self.view = "list"
@@ -718,11 +764,22 @@ class CLBusinessCardApp(App):
             self.pick_from_gallery()
 
     def _android_camera(self):
+        toast("① 카메라 여는 중...")
         try:
             from android_picker import take_photo
-            take_photo(lambda path: self.on_photo_captured(path) if path else toast("촬영이 취소됐어요"))
+            take_photo(self._camera_done)
         except Exception as e:
-            toast("카메라 실행 실패: %s" % e)
+            self.show_error_popup("카메라 실행 실패:\n%s\n%s" % (e, traceback.format_exc()))
+
+    def _camera_done(self, path):
+        toast("② 촬영 결과 받음")
+        try:
+            if path and os.path.exists(path):
+                self.on_photo_captured(path)
+            else:
+                toast("촬영이 취소됐거나 사진이 없어요")
+        except Exception as e:
+            self.show_error_popup("촬영 후 처리 실패:\n%s\n%s" % (e, traceback.format_exc()))
 
     def on_photo_captured(self, path):
         if path and os.path.exists(path):
@@ -732,11 +789,16 @@ class CLBusinessCardApp(App):
         self._pick_image(lambda path: self.process_scan(path))
 
     def process_scan(self, image_path):
-        # 이미지 최적화 (너무 크면 OCR 느리고 메모리 문제)
-        opt_path = self._optimize_image(image_path)
-        self.scan_photo = opt_path
-        toast("명함을 인식하는 중...")
-        Clock.schedule_once(lambda dt: self._do_ocr(opt_path), 0.3)
+        # 단계별 안전 처리 — 어디서 문제가 생겨도 앱이 안 죽도록
+        try:
+            opt_path = self._optimize_image(image_path)
+            self.scan_photo = opt_path
+        except Exception as e:
+            print("사진 처리 오류:", e)
+            self.scan_photo = image_path
+            opt_path = image_path
+        # 안정성 우선: 촬영 후 바로 입력 폼 (사진 저장됨, OCR은 추후 재활성화)
+        self._on_ocr_text("")
 
     def _optimize_image(self, image_path):
         """명함 사진 최적화: 긴 변 1600px로 리사이즈, 회전 보정."""
@@ -815,13 +877,24 @@ class CLBusinessCardApp(App):
     # ── 가져오기 ──
     def pick_import_file(self):
         if platform == "android":
+            toast("① 파일 선택 여는 중...")
             try:
                 from android_picker import pick_file
-                pick_file(lambda path: self._load_import(path) if path else toast("파일을 선택하지 않았어요"))
+                pick_file(self._import_file_done)
             except Exception as e:
-                toast("파일 열기 실패: %s" % e)
+                self.show_error_popup("파일 선택 실행 실패:\n%s\n%s" % (e, traceback.format_exc()))
         else:
             self._desktop_file_chooser(self._load_import, ["*.vcf", "*.csv", "*.xlsx"])
+
+    def _import_file_done(self, path):
+        toast("② 파일 받음")
+        try:
+            if path:
+                self._load_import(path)
+            else:
+                toast("파일을 선택하지 않았어요")
+        except Exception as e:
+            self.show_error_popup("파일 처리 실패:\n%s\n%s" % (e, traceback.format_exc()))
 
     def _load_import(self, path):
         try:
@@ -849,12 +922,12 @@ class CLBusinessCardApp(App):
                     self.import_preview = parse_csv(text)
 
             if not self.import_preview:
-                toast("%s 파일에서 명함을 못 찾았어요" % kind)
+                toast("③ %s 파일에서 명함 못 찾음" % kind)
             else:
-                toast("%s에서 %d개 명함 발견!" % (kind, len(self.import_preview)))
+                toast("③ %s에서 %d개 발견!" % (kind, len(self.import_preview)))
             self.refresh()
         except Exception as e:
-            toast("파일 읽기 실패: %s" % e)
+            self.show_error_popup("파일 읽기 실패:\n%s\n%s" % (e, traceback.format_exc()))
 
     def confirm_import(self):
         base = int(datetime.now().timestamp() * 1000)
