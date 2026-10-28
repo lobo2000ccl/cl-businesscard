@@ -38,15 +38,22 @@ def _deliver(path):
 
 
 def _on_activity_result(request_code, result_code, intent):
+    print("[picker] activity result: req=%s res=%s" % (request_code, result_code))
     try:
         from jnius import autoclass, cast
         Activity = autoclass("android.app.Activity")
         if result_code != Activity.RESULT_OK:
+            print("[picker] result not OK")
             _deliver(None)
             return
 
         if request_code == 1001:
-            # 카메라 — 썸네일 Bitmap 결과 처리
+            # 카메라 — 지정한 파일 경로에 고해상도 원본 저장됨
+            global _capture_path
+            if _capture_path and os.path.exists(_capture_path) and os.path.getsize(_capture_path) > 0:
+                _deliver(_capture_path)
+                return
+            # fallback: 썸네일
             try:
                 if intent is not None:
                     extras = intent.getExtras()
@@ -56,7 +63,7 @@ def _on_activity_result(request_code, result_code, intent):
                             _deliver(_save_bitmap(bmp))
                             return
             except Exception as e:
-                print("썸네일 처리 실패:", e)
+                print("썸네일 fallback 실패:", e)
             _deliver(None)
         elif request_code in (1002, 1003):
             # 갤러리/파일 — intent.getData()의 Uri → 실제 파일로 복사
@@ -181,23 +188,43 @@ def _save_bitmap(bmp):
 # 공개 API
 # ─────────────────────────────────────
 def take_photo(callback):
-    """카메라로 촬영 — 썸네일 방식 (안정적, 크래시 없음).
-    고해상도가 필요하면 '갤러리에서 선택'으로 폰 기본 카메라 사진 사용 권장.
+    """카메라로 촬영 (고해상도). 외부 캐시 파일 경로를 EXTRA_OUTPUT으로 전달.
+    StrictMode VM 정책을 완화해 FileUriExposedException 없이 Uri.fromFile 사용.
     """
-    global _callback, _capture_uri
-    _capture_uri = None
+    global _callback, _capture_path
+    _capture_path = None
     if platform != "android":
         callback(None)
         return
     try:
         _ensure_bound()
-        from jnius import autoclass
+        from jnius import autoclass, cast
         PythonActivity = autoclass("org.kivy.android.PythonActivity")
         Intent = autoclass("android.content.Intent")
         MediaStore = autoclass("android.provider.MediaStore")
+        Uri = autoclass("android.net.Uri")
+        File = autoclass("java.io.File")
         activity = PythonActivity.mActivity
-        # EXTRA_OUTPUT 없이 → 썸네일 Bitmap 결과 (FileProvider/MediaStore 불필요, 안정적)
+
+        # StrictMode 완화 (file:// Uri 노출 허용) — FileProvider 없이 고해상도 촬영
+        try:
+            StrictMode = autoclass("android.os.StrictMode")
+            builder = autoclass("android.os.StrictMode$VmPolicy$Builder")()
+            StrictMode.setVmPolicy(builder.build())
+        except Exception as se:
+            print("StrictMode 설정 경고:", se)
+
+        # 외부 캐시에 저장 경로 생성
+        ext = activity.getExternalCacheDir()
+        if ext is None:
+            ext = activity.getCacheDir()
+        _capture_path = os.path.join(ext.getAbsolutePath(),
+                                     "capture_%d.jpg" % int(datetime.now().timestamp()))
+        f = File(_capture_path)
+        uri = Uri.fromFile(f)
+
         intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+        intent.putExtra(MediaStore.EXTRA_OUTPUT, cast("android.os.Parcelable", uri))
         _callback = callback
         activity.startActivityForResult(intent, 1001)
     except Exception as e:

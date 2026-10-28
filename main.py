@@ -862,23 +862,21 @@ class CLBusinessCardApp(App):
         Clock.schedule_once(lambda dt: self._do_ocr(opt_path), 0.3)
 
     def _optimize_image(self, image_path):
-        """명함 사진 최적화: 긴 변 1600px로 리사이즈, 회전 보정."""
+        """명함 사진 최적화: 회전 보정 + OCR용 고해상도 유지."""
         try:
             from PIL import Image as PILImage, ImageOps
             img = PILImage.open(image_path)
-            # EXIF 회전 보정 (카메라 사진이 눕는 문제)
-            img = ImageOps.exif_transpose(img)
-            # 긴 변 기준 리사이즈
-            max_side = 1600
+            img = ImageOps.exif_transpose(img)  # 회전 보정
+            # OCR 정확도를 위해 너무 크면만 축소(상한 2600px), 작으면 유지
+            max_side = 2600
             w, h = img.size
             if max(w, h) > max_side:
                 ratio = max_side / float(max(w, h))
                 img = img.resize((int(w * ratio), int(h * ratio)), PILImage.LANCZOS)
-            # RGB 변환 (PNG 등 대비)
             if img.mode not in ("RGB", "L"):
                 img = img.convert("RGB")
             out = image_path.rsplit(".", 1)[0] + "_opt.jpg"
-            img.save(out, "JPEG", quality=90)
+            img.save(out, "JPEG", quality=95)
             return out if os.path.exists(out) else image_path
         except Exception as e:
             print("이미지 최적화 실패:", e)
