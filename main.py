@@ -754,32 +754,42 @@ class CLBusinessCardApp(App):
             toast("갤러리 열기 실패: %s" % e)
 
     def _desktop_file_chooser(self, callback, filters):
+        """데스크톱(PC): OS 기본 파일 대화상자 사용 (tkinter).
+        Kivy FileChooser는 윈도우에서 잠긴 파일 만나면 is_hidden 크래시가 나므로 회피.
+        """
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+            root = tk.Tk()
+            root.withdraw()  # 메인 창 숨김
+            root.attributes("-topmost", True)
+            # 확장자 필터 구성
+            exts = [f.replace("*", "") for f in filters]
+            ftypes = [("명함 파일", " ".join("*" + e for e in exts)), ("모든 파일", "*.*")]
+            path = filedialog.askopenfilename(title="파일 선택", filetypes=ftypes)
+            root.destroy()
+            if path:
+                callback(path)
+            else:
+                toast("파일을 선택하지 않았어요")
+        except Exception as e:
+            # tkinter 없으면 Kivy 파일선택으로 fallback
+            print("tkinter 파일선택 실패, Kivy로 대체:", e)
+            self._kivy_file_chooser(callback)
+
+    def _kivy_file_chooser(self, callback):
         from kivy.uix.filechooser import FileChooserListView
-        popup = Popup(title="파일 선택 (더블클릭 또는 선택 후 아래 버튼)", title_font=FONT,
-                      size_hint=(0.95, 0.9))
+        popup = Popup(title="파일 선택", title_font=FONT, size_hint=(0.95, 0.9))
         box = BoxLayout(orientation="vertical")
-        # 필터 없이 전체 표시 (한글 파일명/대소문자 문제 회피)
-        start = os.path.expanduser("~")
-        fc = FileChooserListView(path=start)
+        fc = FileChooserListView(path=os.path.expanduser("~"), dirselect=False)
         box.add_widget(fc)
-        info = Label(text="선택된 파일: 없음", font_name=FONT, font_size=dp(12),
-                     color=SUB, size_hint_y=None, height=dp(24))
-        box.add_widget(info)
-        fc.bind(selection=lambda inst, sel: setattr(
-            info, "text", "선택: " + (os.path.basename(sel[0]) if sel else "없음")))
         pick = MintButton(text="✅ 이 파일 선택", bg=M4, radius=10,
                           size_hint_y=None, height=dp(48))
         def do_pick(*a):
             if fc.selection:
-                path = fc.selection[0]
                 popup.dismiss()
-                callback(path)
-            else:
-                info.text = "먼저 파일을 선택(클릭)해주세요"
+                callback(fc.selection[0])
         pick.bind(on_release=do_pick)
-        # 더블클릭(파일 바로 열기)도 지원
-        fc.bind(on_submit=lambda inst, sel, touch: (popup.dismiss(), callback(sel[0]))
-                if sel else None)
         box.add_widget(pick)
         popup.content = box
         popup.open()
