@@ -408,27 +408,44 @@ class Avatar(Widget):
 
 
 def toast(msg):
-    """간단한 토스트 메시지"""
-    if platform == "android":
+    """Kivy 위젯 기반 토스트 — 어느 스레드에서 호출해도 안전.
+    (안드로이드 네이티브 Toast는 백그라운드 스레드에서 Looper 오류로 앱을 죽임)
+    """
+    def _show(dt=None):
         try:
-            from jnius import autoclass, cast
-            PythonActivity = autoclass("org.kivy.android.PythonActivity")
-            Toast = autoclass("android.widget.Toast")
-            activity = PythonActivity.mActivity
-            String = autoclass("java.lang.String")
-            def show(dt):
-                t = Toast.makeText(activity, cast("java.lang.CharSequence",
-                                   String(msg)), Toast.LENGTH_SHORT)
-                t.show()
-            Clock.schedule_once(show, 0)
-            return
-        except Exception:
-            pass
-    # 데스크톱 fallback — 팝업
-    p = Popup(title="", separator_height=0, size_hint=(0.7, None), height=dp(80),
-              content=Label(text=msg, font_name=FONT, color=WHITE))
-    p.open()
-    Clock.schedule_once(lambda dt: p.dismiss(), 1.5)
+            from kivy.animation import Animation
+            lbl = Label(text=str(msg), font_name=FONT, font_size=dp(14), color=(1, 1, 1, 1),
+                        halign="center", valign="middle", size_hint=(None, None),
+                        padding=(dp(20), dp(12)))
+            lbl.bind(texture_size=lambda i, s: setattr(i, "size",
+                     (min(s[0] + dp(40), dp(360)), s[1] + dp(24))))
+            lbl.text_size = (dp(320), None)
+            with lbl.canvas.before:
+                Color(0, 0.478, 0.431, 0.95)
+                rect = RoundedRectangle(radius=[dp(22)])
+            lbl.bind(pos=lambda i, p: setattr(rect, "pos", i.pos),
+                     size=lambda i, s: setattr(rect, "size", i.size))
+            app = App.get_running_app()
+            if not app or not app.root:
+                return
+            lbl.pos_hint = {}
+            app.root.add_widget(lbl)
+            # 하단 중앙 배치
+            def place(*a):
+                lbl.center_x = app.root.center_x
+                lbl.y = dp(90)
+            Clock.schedule_once(place, 0)
+            # 자동 사라짐
+            def remove(dt2):
+                try:
+                    app.root.remove_widget(lbl)
+                except Exception:
+                    pass
+            Clock.schedule_once(remove, 2.0)
+        except Exception as e:
+            print("토스트 표시 실패:", e)
+    # 항상 메인 스레드에서 실행
+    Clock.schedule_once(_show, 0)
 
 
 # ────────────────────────────────────────────────
