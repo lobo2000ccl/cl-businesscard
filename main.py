@@ -800,13 +800,60 @@ class CLBusinessCardApp(App):
 
     def on_photo_captured(self, path):
         if path and os.path.exists(path):
-            self.process_scan(path)
+            self.show_crop_screen(path)
 
     def pick_from_gallery(self):
-        self._pick_image(lambda path: self.process_scan(path))
+        self._pick_image(lambda path: self.show_crop_screen(path) if path else None)
+
+    def show_crop_screen(self, image_path):
+        """촬영/선택한 사진을 크롭 화면으로 보여줌."""
+        try:
+            from crop_screen import CropWidget
+            from kivy.uix.boxlayout import BoxLayout as _BL
+            overlay = _BL(orientation="vertical")
+            with overlay.canvas.before:
+                Color(0.05, 0.05, 0.05, 1)
+                _bg = Rectangle()
+            overlay.bind(pos=lambda i, p: setattr(_bg, "pos", i.pos),
+                         size=lambda i, s: setattr(_bg, "size", i.size))
+            # 안내
+            overlay.add_widget(Label(text="명함 영역을 손가락으로 드래그해 맞춰주세요",
+                                     font_name=FONT, font_size=dp(14), color=WHITE,
+                                     size_hint_y=None, height=dp(44)))
+            crop = CropWidget(image_path)
+            overlay.add_widget(crop)
+            # 버튼
+            btns = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(60),
+                             spacing=dp(10), padding=dp(10))
+            ok = MintButton(text="✅ 이 영역 사용", bg=M4, radius=12, bold=True)
+            cancel = MintButton(text="취소", bg=(0.3, 0.3, 0.3, 1), radius=12)
+            btns.add_widget(cancel)
+            btns.add_widget(ok)
+            overlay.add_widget(btns)
+
+            popup = Popup(title="", separator_height=0, content=overlay,
+                          size_hint=(1, 1), auto_dismiss=False)
+
+            def do_ok(*a):
+                cropped = crop.get_cropped_path()
+                popup.dismiss()
+                self.process_scan(cropped)
+
+            def do_cancel(*a):
+                popup.dismiss()
+                # 크롭 취소해도 원본으로 진행
+                self.process_scan(image_path)
+
+            ok.bind(on_release=do_ok)
+            cancel.bind(on_release=do_cancel)
+            popup.open()
+        except Exception as e:
+            print("크롭 화면 실패:", e)
+            # 크롭 안 되면 원본으로 바로 진행
+            self.process_scan(image_path)
 
     def process_scan(self, image_path):
-        # 단계별 안전 처리 — 어디서 문제가 생겨도 앱이 안 죽도록
+        # 사진 최적화 (회전보정 + 리사이즈)
         try:
             opt_path = self._optimize_image(image_path)
             self.scan_photo = opt_path
@@ -814,8 +861,9 @@ class CLBusinessCardApp(App):
             print("사진 처리 오류:", e)
             self.scan_photo = image_path
             opt_path = image_path
-        # 안정성 우선: 촬영 후 바로 입력 폼 (사진 저장됨, OCR은 추후 재활성화)
-        self._on_ocr_text("")
+        # OCR 자동인식 실행
+        toast("명함을 인식하는 중...")
+        Clock.schedule_once(lambda dt: self._do_ocr(opt_path), 0.3)
 
     def _optimize_image(self, image_path):
         """명함 사진 최적화: 긴 변 1600px로 리사이즈, 회전 보정."""
